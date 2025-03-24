@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: job_scheduler_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: job_scheduler_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: job_scheduler_db
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - sched_network
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U job_scheduler_user -d job_scheduler_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: job_scheduler_app
+    restart: unless-stopped
+    environment:
+      LOGURU_LEVEL: ${LOGURU_LEVEL:-DEBUG}
+      APP_PORT: ${APP_PORT:-8176}
+      DB_SCHEMA: postgresql+asyncpg
+      DB_SCHEMA_APSCHEDULER: postgresql+psycopg
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: job_scheduler_db
+      DB_USER: job_scheduler_user
+      DB_PASSWORD: ${DB_PASSWORD}
+      API_TOKEN: ${API_TOKEN}
+    ports:
+      - "${APP_PORT:-8176}:${APP_PORT:-8176}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sched_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:${APP_PORT:-8176}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  sched_network:
+    driver: bridge
+
+volumes:
+  db_data:
